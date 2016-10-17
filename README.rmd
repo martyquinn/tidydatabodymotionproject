@@ -1,0 +1,196 @@
+---
+title: "Tidy Data Set for Project Body Motion Measurements"
+author: "Marty Quinn"
+date: "October 16, 2016"
+output: 
+  html_document: 
+    keep_md: yes
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+## Instructions for project
+
+The purpose of this project is to demonstrate your ability to collect, work with, and clean a data set. The goal is to prepare tidy data that can be used for later analysis. You will be graded by your peers on a series of yes/no questions related to the project. You will be required to submit: 1) a tidy data set as described below, 2) a link to a Github repository with your script for performing the analysis, and 3) a code book that describes the variables, the data, and any transformations or work that you performed to clean up the data called CodeBook.md. You should also include a README.md in the repo with your scripts. This repo explains how all of the scripts work and how they are connected.
+
+One of the most exciting areas in all of data science right now is wearable computing - see for example this article . Companies like Fitbit, Nike, and Jawbone Up are racing to develop the most advanced algorithms to attract new users. The data linked to from the course website represent data collected from the accelerometers from the Samsung Galaxy S smartphone. A full description is available at the site where the data was obtained:
+
+http://archive.ics.uci.edu/ml/datasets/Human+Activity+Recognition+Using+Smartphones
+
+Here are the data for the project:
+
+https://d396qusza40orc.cloudfront.net/getdata%2Fprojectfiles%2FUCI%20HAR%20Dataset.zip
+
+You should create one R script called run_analysis.R that does the following.
+
+    1 Merges the training and the test sets to create one data set.
+    2 Extracts only the measurements on the mean and standard deviation for each measurement.
+    3 Uses descriptive activity names to name the activities in the data set
+    4 Appropriately labels the data set with descriptive variable names.
+    5 From the data set in step 4, creates a second, independent tidy data set with the average of each variable for each activity and each subject.
+
+
+## Overview of steps taken to satisfy the requirements of the steps 1-4:
+
+We don't create the combined file first, but rather tidy each test and training 
+set separately, then combine them for each type of data, X (features), y (activites), and subject (subject ids). 
+Finally, we combine them all together. 
+Note: during the combining, we always put the training datasets first.
+
+## Get and unzip the data
+Get data and unzip in subdirectory ./data. This ends up creating the data
+in directory data/UCI HAR Dataset.
+```{r getunzip}
+library(dplyr) 
+if(!file.exists("./data")){dir.create("./data")}
+dataurl <- "https://d396qusza40orc.cloudfront.net/getdata%2Fprojectfiles%2FUCI%20HAR%20Dataset.zip"
+download.file(dataurl,destfile="./data/bodymotion.zip",method="curl")
+
+unzip(zipfile="./data/bodymotion.zip",exdir="./data")
+```
+
+ 
+## Start tidying 
+Read the features descriptions dataset so we can create a logical vector of the columns 
+we need to keep for this assignment. As the instructions state: 
+
+>Extract only the measurements on the mean and standard deviation for each measurement. 
+
+That means, from my reading, that any of the recorded variables which had mean or 
+std functions applied to them. 
+So, the only columns we need to keep are the ones that have -mean() or -std() in them. 
+We'll use grep to identify them.
+```{r getfeatures}
+features <- read.table("data/UCI HAR Dataset/features.txt", header = FALSE)
+```
+## Create the subset of features containing only -mean() and -std()
+This 'features' data frame is named with prefix 'subsetted'.
+```{r}
+subsettedfeatures <- grep("-mean\\(\\)|-std\\(\\)", features$V2)
+```
+use the subset of features vector to select out 
+our columns of interest from the test and train datasets.
+```{r}
+train <- read.table("data/UCI HAR Dataset/train/X_train.txt")
+subfeattrain <- train[,subsettedfeatures]
+test <- read.table("data/UCI HAR Dataset/test/X_test.txt")
+subfeattest <- test[,subsettedfeatures]
+
+namestotransform <- features[subsettedfeatures,2]
+```
+##Tidy up the subset of column names in namestotransform
+1. removing -, (),
+2. changing BodyBody to Body
+3. t to time
+4. f to freq
+5. acc to accel to make it more like accelerometer but nnot quite so long.
+6. make name all lowercase letters
+```{r, tidycolumnnames}
+namestotransform <- gsub("-","", namestotransform)
+namestotransform <- gsub("\\(\\)","", namestotransform)
+namestotransform <- gsub("BodyBody","Body", namestotransform)
+namestotransform <- gsub("^t", "time",namestotransform)
+namestotransform <- gsub("^f", "freq", namestotransform)
+namestotransform <- gsub("Acc", "Accel", namestotransform)
+namestotransform <- tolower(namestotransform)
+```
+
+##Assign the transformed, expanded and cleaned up names to be the colnames of each subsetted features dataset. 
+```{r}
+colnames(subfeattest) <- namestotransform
+colnames(subfeattrain) <- namestotransform
+```
+
+## Add descriptive column to the movement id actions file. 
+These next steps read the activity labels and then adds labels for each activity number
+so they are human readable character strings.
+```{r}
+activitylabels <- read.table("data/UCI HAR Dataset/activity_labels.txt")
+activitiestrain <- read.table("data/UCI HAR Dataset/train/y_train.txt")
+activitiestest <- read.table("data/UCI HAR Dataset/test/y_test.txt")
+
+
+activitiestrain <- cbind(activitiestrain, factor(activitiestrain$V1,
+                    levels = c(1:6),
+                    labels = as.character(activitylabels[,2]))) 
+activitiestest <- cbind(activitiestest, factor(activitiestest$V1,
+                    levels = c(1:6),
+                    labels = as.character(activitylabels[,2])))
+                   
+colnames(activitiestrain) <- c("activityid", "activity")
+colnames(activitiestest) <- c("activityid", "activity")
+head(activitiestrain)
+head(activitiestest)
+```
+## Combine the y activity datasets
+```{r}
+combinedactivity <- rbind(activitiestrain, activitiestest)
+nrow(activitiestrain)
+nrow(activitiestest)
+nrow(combinedactivity)
+str(combinedactivity)
+```
+## Combine the features datasets
+
+```{r}
+combinedsubfeat <- rbind(subfeattrain, subfeattest)
+nrow(subfeattrain)
+nrow(subfeattest)
+nrow(combinedsubfeat)
+str(combinedsubfeat)
+```
+## Put proper column names to the subject id files.
+```{r}
+subjecttrain <- read.table("data/UCI HAR Dataset/train/subject_train.txt")
+subjecttest  <- read.table("data/UCI HAR Dataset/test/subject_test.txt")
+colnames(subjecttrain) <- "subjectid"
+colnames(subjecttest) <- "subjectid"
+
+head(subjecttrain)
+tail(subjecttest)
+```
+## Combine the subject id datasets
+```{r}
+combinedsubject <- rbind(subjecttrain, subjecttest)
+head(combinedsubject)
+tail(combinedsubject)
+```
+
+## Finally, combine all the combined training and test files into the final combined file. 
+```{r combiningstep}
+combined <- cbind(combinedsubject, combinedactivity, combinedsubfeat)
+
+str(combined)
+head(combined)
+summary(combined)
+```
+
+## Step 4: Save combined tidied data (named tidybodymotion.txt)
+```{r}
+write.table(combined, file="data/tidybodymotion.txt", row.names=FALSE)
+```
+## Read it in with the following...
+*read.table("data/tidybodymotion.txt", header = TRUE)*
+
+## Create the 2nd tidy set aggregating the data by average. 
+As stated in the instructions:
+
+> From the data set in step 4, creates a second, 
+> independent tidy data set with the average of each variable for each activity 
+> and each subject.
+```{r}
+library(plyr)
+aggcombined <- aggregate(. ~subjectid + activity, combined, mean)
+aggcombined <- aggcombined[order(aggcombined$subjectid,aggcombined$activity),]
+write.table(aggcombined, file = "data/tidybodymotionmean.txt",row.names=FALSE)
+head(aggcombined, 12)
+tail(aggcombined, 12)
+```
+
+## Read it in with the following... 
+*read.table("data/tidybodymotionmean.txt", header = TRUE)*
+
+
+
